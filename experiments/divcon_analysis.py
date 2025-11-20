@@ -11,12 +11,14 @@ DivCon: Division & Consensus Analysis
     - results/axes.json: 対立軸
     - results/anchors.json: 極端意見アンカー
     - results/scores.csv: 全意見のスコア
+    - results/consensus.json: 合意可能性分析結果
     - results/summary.txt: 統計サマリー
 """
 
 import os
 import json
 import pandas as pd
+from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel
@@ -460,6 +462,156 @@ def stage4_scoring(axis, anchors, topic_opinions, batch_size=20):
 
 
 # ============================================================================
+# Stage 5: 合意可能性分析
+# ============================================================================
+
+class ConsensusPoint(BaseModel):
+    """合意可能なポイント"""
+    point: str
+    explanation: str
+    supporting_opinions: List[str]  # 意見IDのリスト
+
+class ConflictPoint(BaseModel):
+    """合意不可能なポイント"""
+    point: str
+    explanation: str
+    left_opinions: List[str]  # 左側意見IDのリスト
+    right_opinions: List[str]  # 右側意見IDのリスト
+
+class ConsensusAnalysisResponse(BaseModel):
+    """合意可能性分析の結果"""
+    consensus_points: List[ConsensusPoint]
+    conflict_points: List[ConflictPoint]
+    reasoning: str
+
+
+def stage5_consensus_analysis(axis, scores):
+    """Stage 5: 合意可能性分析
+
+    Args:
+        axis: 対立軸情報
+        scores: スコアリング結果のリスト
+
+    Returns:
+        dict: 合意可能・不可能なポイントの分析結果
+    """
+    # スコア付きの意見のみを抽出
+    valid_scores = [s for s in scores if s['score'] is not None]
+
+    if len(valid_scores) == 0:
+        return {
+            'axis_id': axis['id'],
+            'axis_name': axis['name'],
+            'consensus_points': [],
+            'conflict_points': [],
+            'reasoning': '分析対象となる意見がありません。'
+        }
+
+    # 左側（スコア1-3）と右側（スコア4-6）に分類
+    left_opinions = [s for s in valid_scores if s['score'] <= 3]
+    right_opinions = [s for s in valid_scores if s['score'] >= 4]
+
+    # LLMに渡す意見リストを作成
+    left_text = "\n".join([
+        f"[ID: {s['opinion_id']}, スコア: {s['score']}] {s['excerpt']}"
+        for s in left_opinions[:20]  # 最大20件
+    ])
+
+    right_text = "\n".join([
+        f"[ID: {s['opinion_id']}, スコア: {s['score']}] {s['excerpt']}"
+        for s in right_opinions[:20]  # 最大20件
+    ])
+
+    prompt = f"""以下の対立軸において、合意可能なポイントと合意不可能なポイントを分析してください。
+
+【対立軸】
+{axis['name']}
+
+- 左極（スコア1-3）: {axis['left_pole']}
+- 右極（スコア4-6）: {axis['right_pole']}
+
+【スコアリング基準】
+- スコア1: 左極の立場を最も強く支持（最左端）
+- スコア2-3: 左寄りの立場
+- スコア4-5: 右寄りの立場
+- スコア6: 右極の立場を最も強く支持（最右端）
+
+【左側の意見（スコア1-3）】
+{left_text if left_text else '（該当意見なし）'}
+
+【右側の意見（スコア4-6）】
+{right_text if right_text else '（該当意見なし）'}
+
+【分析指示】
+1. **合意可能なポイント**: 左右両側が妥協・合意できそうな共通点や中間案を特定してください
+   - 両側が共有している価値観や懸念
+   - 実現可能な妥協案や段階的アプローチ
+   - 両側が受け入れられそうな条件付き合意
+   - 特にスコア2-3と4-5の意見間で見られる共通点に注目
+
+2. **合意不可能なポイント**: 根本的に対立しており、妥協が困難なポイントを特定してください
+   - 価値観の根本的な相違
+   - 互いに譲れない原則や立場
+   - 論理的に両立不可能な主張
+   - 特にスコア1と6の意見間で見られる根本的対立に注目
+
+各ポイントには、それを裏付ける意見のIDを含めてください。
+"""
+
+    try:
+        completion = client.beta.chat.completions.parse(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "あなたは対立する意見を分析し、合意可能性を評価する専門家です。"},
+                {"role": "user", "content": prompt}
+            ],
+            response_format=ConsensusAnalysisResponse
+        )
+
+        result = completion.choices[0].message.parsed
+
+        return {
+            'axis_id': axis['id'],
+            'axis_name': axis['name'],
+            'left_pole': axis['left_pole'],
+            'right_pole': axis['right_pole'],
+            'consensus_points': [
+                {
+                    'point': cp.point,
+                    'explanation': cp.explanation,
+                    'supporting_opinions': cp.supporting_opinions
+                }
+                for cp in result.consensus_points
+            ],
+            'conflict_points': [
+                {
+                    'point': cp.point,
+                    'explanation': cp.explanation,
+                    'left_opinions': cp.left_opinions,
+                    'right_opinions': cp.right_opinions
+                }
+                for cp in result.conflict_points
+            ],
+            'reasoning': result.reasoning,
+            'opinion_counts': {
+                'left': len(left_opinions),
+                'right': len(right_opinions),
+                'total': len(valid_scores)
+            }
+        }
+
+    except Exception as e:
+        print(f"  [ERROR] 軸 {axis['id']} の合意可能性分析でエラー: {e}")
+        return {
+            'axis_id': axis['id'],
+            'axis_name': axis['name'],
+            'consensus_points': [],
+            'conflict_points': [],
+            'reasoning': f'エラーが発生しました: {str(e)}'
+        }
+
+
+# ============================================================================
 # メイン処理
 # ============================================================================
 
@@ -594,6 +746,51 @@ def main():
     scores_df = scores_df.sort_values(by=['axis_id', 'score'], na_position='last')
     scores_df.to_csv(f'{RESULTS_DIR}/scores.csv', index=False, encoding='utf-8-sig')
 
+    # ============================================================================
+    # Stage 5: 合意可能性分析
+    # ============================================================================
+    print(f"\n[Stage 5 並列実行] 全 {len(all_axis_tasks)} 軸の合意可能性分析を並列実行中... (並列数: {MAX_WORKERS})\n")
+
+    all_consensus_analyses = []
+
+    def analyze_consensus_for_axis(task):
+        """軸の合意可能性分析（並列実行用）"""
+        axis = task['axis']
+        axis_id = axis['id']
+
+        # この軸のスコアのみを抽出
+        axis_scores = [s for s in all_scores if s['axis_id'] == axis_id]
+
+        with print_lock:
+            print(f"  [Stage 5] 軸 [{axis_id}] を分析中... ({len(axis_scores)} 件の意見)")
+
+        # Stage 5: 合意可能性分析
+        analysis = stage5_consensus_analysis(axis, axis_scores)
+
+        with print_lock:
+            consensus_count = len(analysis.get('consensus_points', []))
+            conflict_count = len(analysis.get('conflict_points', []))
+            print(f"  [OK] 軸 [{axis_id}] 完了 (合意点: {consensus_count}, 対立点: {conflict_count})\n")
+
+        return analysis
+
+    # 並列実行
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [executor.submit(analyze_consensus_for_axis, task) for task in all_axis_tasks]
+        for future in as_completed(futures):
+            analysis = future.result()
+            all_consensus_analyses.append(analysis)
+
+    print(f"[OK] 全軸の合意可能性分析完了\n")
+
+    # 合意可能性分析結果を保存
+    print("合意可能性分析結果を保存中...")
+    # 軸ID順にソート
+    all_consensus_analyses = sorted(all_consensus_analyses, key=lambda x: x['axis_id'])
+
+    with open(f'{RESULTS_DIR}/consensus.json', 'w', encoding='utf-8') as f:
+        json.dump(all_consensus_analyses, f, ensure_ascii=False, indent=2)
+
     # サマリー統計
     with open(f'{RESULTS_DIR}/summary.txt', 'w', encoding='utf-8') as f:
         f.write("DivCon Analysis Summary\n")
@@ -649,6 +846,7 @@ def main():
     print(f"    - axes.json: 対立軸一覧")
     print(f"    - anchors.json: アンカー一覧")
     print(f"    - scores.csv: 全意見のスコア")
+    print(f"    - consensus.json: 合意可能性分析")
     print(f"    - summary.txt: 統計サマリー")
     print(f"{'=' * 60}")
 

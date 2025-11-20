@@ -33,6 +33,15 @@ def generate_html():
                 'right_pole': axis['right_pole']
             }
 
+    # 合意可能性分析を読み込み
+    try:
+        with open('results/consensus.json', 'r', encoding='utf-8') as f:
+            consensus_data = json.load(f)
+        # 軸IDでインデックス化
+        consensus_map = {item['axis_id']: item for item in consensus_data}
+    except FileNotFoundError:
+        consensus_map = {}
+
     # nullスコアを文字列に変換
     scores_df['score'] = scores_df['score'].fillna('該当なし')
     scores_df['excerpt'] = scores_df['excerpt'].fillna('')
@@ -50,6 +59,7 @@ def generate_html():
     axis_to_topic_json = json.dumps(axis_to_topic, ensure_ascii=False)
     axis_map_json = json.dumps(axis_map, ensure_ascii=False)
     axis_full_info_json = json.dumps(axis_full_info, ensure_ascii=False)
+    consensus_map_json = json.dumps(consensus_map, ensure_ascii=False)
 
     html_content = f"""<!DOCTYPE html>
 <html lang="ja">
@@ -365,6 +375,134 @@ def generate_html():
                 flex-direction: column;
             }}
         }}
+
+        /* 合意可能性分析セクション */
+        .consensus-section {{
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }}
+
+        .consensus-section h3 {{
+            margin: 0 0 20px 0;
+            color: #2c3e50;
+            font-size: 1.3em;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }}
+
+        .consensus-tabs {{
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }}
+
+        .consensus-tab {{
+            padding: 10px 20px;
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }}
+
+        .consensus-tab:hover {{
+            background: #ecf0f1;
+        }}
+
+        .consensus-tab.active {{
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }}
+
+        .consensus-tab.consensus-active {{
+            background: #27ae60;
+            color: white;
+            border-color: #27ae60;
+        }}
+
+        .consensus-tab.conflict-active {{
+            background: #e74c3c;
+            color: white;
+            border-color: #e74c3c;
+        }}
+
+        .consensus-content {{
+            display: none;
+        }}
+
+        .consensus-content.active {{
+            display: block;
+        }}
+
+        .consensus-points, .conflict-points {{
+            display: grid;
+            gap: 15px;
+        }}
+
+        .consensus-item {{
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #27ae60;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }}
+
+        .conflict-item {{
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #e74c3c;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }}
+
+        .consensus-item h4, .conflict-item h4 {{
+            margin: 0 0 8px 0;
+            color: #2c3e50;
+            font-size: 1.1em;
+        }}
+
+        .consensus-item p, .conflict-item p {{
+            margin: 0 0 10px 0;
+            color: #555;
+            line-height: 1.6;
+        }}
+
+        .supporting-opinions {{
+            margin-top: 10px;
+            padding: 10px;
+            background: #f1f8f4;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #666;
+        }}
+
+        .opposing-opinions {{
+            margin-top: 10px;
+            padding: 10px;
+            background: #fef5f5;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }}
+
+        .left-opinions {{
+            color: #c0392b;
+            margin-bottom: 5px;
+        }}
+
+        .right-opinions {{
+            color: #2980b9;
+        }}
+
+        .no-consensus-data {{
+            padding: 20px;
+            text-align: center;
+            color: #7f8c8d;
+            font-style: italic;
+        }}
     </style>
 </head>
 <body>
@@ -424,6 +562,28 @@ def generate_html():
             </div>
         </div>
 
+        <!-- 合意可能性分析セクション -->
+        <div id="consensusSection" class="consensus-section" style="display: none;">
+            <h3>合意可能性分析</h3>
+
+            <div class="consensus-tabs">
+                <div class="consensus-tab" id="consensusTab" onclick="switchConsensusTab('consensus')">
+                    合意可能なポイント (<span id="consensusCount">0</span>)
+                </div>
+                <div class="consensus-tab" id="conflictTab" onclick="switchConsensusTab('conflict')">
+                    合意不可能なポイント (<span id="conflictCount">0</span>)
+                </div>
+            </div>
+
+            <div id="consensusContent" class="consensus-content active">
+                <div id="consensusPoints" class="consensus-points"></div>
+            </div>
+
+            <div id="conflictContent" class="consensus-content">
+                <div id="conflictPoints" class="conflict-points"></div>
+            </div>
+        </div>
+
         <div id="noResults" class="no-results" style="display: none;">
             該当する意見が見つかりませんでした
         </div>
@@ -434,6 +594,7 @@ def generate_html():
         const axisToTopic = {axis_to_topic_json};
         const axisMap = {axis_map_json};
         const axisFullInfo = {axis_full_info_json};
+        const consensusMap = {consensus_map_json};
         let filteredData = allData;
         let isReversed = false;
 
@@ -545,6 +706,7 @@ def generate_html():
 
             updateAxisHeaders();
             renderOpinions(filteredData);
+            renderConsensus();
         }}
 
         function updateAxisDropdown() {{
@@ -589,6 +751,89 @@ def generate_html():
             applyFilters();
         }}
 
+        // 合意可能性分析の表示切り替え
+        function switchConsensusTab(tab) {{
+            const consensusTab = document.getElementById('consensusTab');
+            const conflictTab = document.getElementById('conflictTab');
+            const consensusContent = document.getElementById('consensusContent');
+            const conflictContent = document.getElementById('conflictContent');
+
+            if (tab === 'consensus') {{
+                consensusTab.classList.add('active', 'consensus-active');
+                conflictTab.classList.remove('active', 'conflict-active');
+                consensusContent.classList.add('active');
+                conflictContent.classList.remove('active');
+            }} else {{
+                conflictTab.classList.add('active', 'conflict-active');
+                consensusTab.classList.remove('active', 'consensus-active');
+                conflictContent.classList.add('active');
+                consensusContent.classList.remove('active');
+            }}
+        }}
+
+        // 合意可能性分析のレンダリング
+        function renderConsensus() {{
+            const axisFilter = document.getElementById('axisFilter').value;
+            const consensusSection = document.getElementById('consensusSection');
+            const consensusPoints = document.getElementById('consensusPoints');
+            const conflictPoints = document.getElementById('conflictPoints');
+            const consensusCount = document.getElementById('consensusCount');
+            const conflictCount = document.getElementById('conflictCount');
+
+            // 軸が選択されていない場合は非表示
+            if (!axisFilter || !consensusMap[axisFilter]) {{
+                consensusSection.style.display = 'none';
+                return;
+            }}
+
+            const consensus = consensusMap[axisFilter];
+            consensusSection.style.display = 'block';
+
+            // 合意可能なポイントを表示
+            const consensusItems = consensus.consensus_points || [];
+            consensusCount.textContent = consensusItems.length;
+
+            if (consensusItems.length === 0) {{
+                consensusPoints.innerHTML = '<div class="no-consensus-data">合意可能なポイントが見つかりませんでした</div>';
+            }} else {{
+                consensusPoints.innerHTML = consensusItems.map(item => `
+                    <div class="consensus-item">
+                        <h4>${{item.point}}</h4>
+                        <p>${{item.explanation}}</p>
+                        <div class="supporting-opinions">
+                            <strong>サポートする意見:</strong> ${{item.supporting_opinions.join(', ')}}
+                        </div>
+                    </div>
+                `).join('');
+            }}
+
+            // 合意不可能なポイントを表示
+            const conflictItems = consensus.conflict_points || [];
+            conflictCount.textContent = conflictItems.length;
+
+            if (conflictItems.length === 0) {{
+                conflictPoints.innerHTML = '<div class="no-consensus-data">合意不可能なポイントが見つかりませんでした</div>';
+            }} else {{
+                conflictPoints.innerHTML = conflictItems.map(item => `
+                    <div class="conflict-item">
+                        <h4>${{item.point}}</h4>
+                        <p>${{item.explanation}}</p>
+                        <div class="opposing-opinions">
+                            <div class="left-opinions">
+                                <strong>左側の意見:</strong> ${{item.left_opinions.join(', ')}}
+                            </div>
+                            <div class="right-opinions">
+                                <strong>右側の意見:</strong> ${{item.right_opinions.join(', ')}}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }}
+
+            // デフォルトで合意可能タブを表示
+            switchConsensusTab('consensus');
+        }}
+
         // イベントリスナー
         document.getElementById('topicFilter').addEventListener('change', () => {{
             updateAxisDropdown();
@@ -600,6 +845,7 @@ def generate_html():
         updateAxisDropdown();
         updateAxisHeaders();
         renderOpinions(allData);
+        renderConsensus();
     </script>
 </body>
 </html>"""
