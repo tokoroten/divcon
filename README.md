@@ -1,13 +1,13 @@
 # DivCon - Divide and Conciliate
 
-日本のエネルギー政策に関する市民意見の対立軸分析ツール
+大量の意見から対立軸を自動抽出・可視化する汎用分析ツール
 
 **DivCon** = **Div**ide and **Con**ciliate（分断して和解する）
 ※ "Divide and Conquer"（分断して統治する）をもじった造語
 
 ## 概要
 
-DivConは、LLMを活用した2段階クラスタリング手法により、大量の市民意見から主要な対立軸を自動抽出・可視化するツールです。
+DivConは、LLMを活用した2段階クラスタリング手法により、大量の意見・コメントから主要な対立軸を自動抽出・可視化する汎用ツールです。市民意見、アンケート結果、SNSコメント、パブリックコメントなど、あらゆる意見データの分析に利用できます。
 
 ### 主な機能
 
@@ -19,19 +19,19 @@ DivConは、LLMを活用した2段階クラスタリング手法により、大�
 
 ## デモ
 
-GitHub Pagesでホスティングされた分析結果を確認できます:
+GitHub Pagesでホスティングされた分析結果（エネルギー政策パブリックコメント分析の例）を確認できます:
 
-- [2ペインビュー (メイン)](https://[username].github.io/divcon/) - 対立軸ごとに左右の意見を比較
-- [リストビュー](https://[username].github.io/divcon/list.html) - フィルタリング・検索機能付き一覧
+- [2ペインビュー (メイン)](https://tokoroten.github.io/divcon/) - 対立軸ごとに左右の意見を比較
+- [リストビュー](https://tokoroten.github.io/divcon/list.html) - フィルタリング・検索機能付き一覧
 
-## 分析結果
+## サンプル分析結果（エネルギー政策パブリックコメント）
 
 - **総意見数**: 1024件
 - **抽出トピック数**: 6個
 - **対立軸数**: 20個
 - **スコア評価件数**: 3311件
 
-### 主要トピック
+### 主要トピック例
 
 1. 原子力の役割・安全性・バックエンド問題
 2. 再生可能エネルギーの拡大と環境・土地利用問題
@@ -53,6 +53,22 @@ cp experiments/.env.example experiments/.env
 # .envファイルにOPENAI_API_KEYを設定
 ```
 
+### 入力データの準備
+
+分析対象のデータをCSV形式で用意します：
+
+```csv
+id,comment
+1,意見内容1
+2,意見内容2
+...
+```
+
+- `id`: 意見の一意識別子
+- `comment`: 分析対象の意見テキスト
+
+データファイルを`experiments/data/opinions.csv`として保存してください。
+
 ### 分析の実行
 
 ```bash
@@ -60,7 +76,15 @@ cd experiments
 python divcon_analysis.py
 ```
 
-### HTMLビューの生成
+分析が完了すると、以下が自動的に生成されます：
+- トピック・対立軸のJSON（`results/` フォルダ）
+- インタラクティブなHTMLビュー（`results/` および `docs/` フォルダ）
+  - 2ペインビュー: 対立する意見を左右に並べて表示
+  - リストビュー: フィルタリング・検索可能な一覧
+
+### HTMLビューの個別生成（オプション）
+
+分析結果から個別にHTMLを生成する場合：
 
 ```bash
 # 2ペインビューの生成
@@ -69,8 +93,6 @@ python generate_two_pane_view.py
 # リストビューの生成
 python generate_list_view.py
 ```
-
-生成されたHTMLは `experiments/results/` に保存されます。
 
 ## ディレクトリ構造
 
@@ -109,6 +131,6 @@ divcon/
 
 MIT License
 
-## 開発者
+## 貢献・フィードバック
 
-詳細は[experiments/README.md](experiments/README.md)を参照してください。
+バグ報告や機能リクエストは、GitHubのIssuesでお願いします。
