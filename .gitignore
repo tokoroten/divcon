@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Environment variables
+.env
+.env.local
+experiments/.env
+experiments/.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Large data files - raw data not to be committed
+experiments/results/scores.csv
+experiments/data/opinions.csv
+eng_pubcom.csv
+
+# Temporary files
+experiments/results/nul
+
+# External repositories
+sensemaking-tools/
