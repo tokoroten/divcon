@@ -503,6 +503,38 @@ def generate_html():
             color: #7f8c8d;
             font-style: italic;
         }}
+
+        /* ジャンプリンク */
+        .jump-link {{
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background: #ecf0f1;
+            border-radius: 8px;
+            display: none;
+        }}
+
+        .jump-link a {{
+            display: inline-block;
+            padding: 12px 24px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+
+        .jump-link a:hover {{
+            background: #2980b9;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }}
+
+        .jump-link-icon {{
+            margin-left: 8px;
+        }}
     </style>
 </head>
 <body>
@@ -542,6 +574,13 @@ def generate_html():
                 左寄り（1-3）: <span class="stats-number" id="leftCount">0</span> 件 |
                 右寄り（4-6）: <span class="stats-number" id="rightCount">0</span> 件
             </span>
+        </div>
+
+        <!-- ジャンプリンク -->
+        <div id="jumpLink" class="jump-link">
+            <a href="#consensusSection">
+                ▼ 合意可能性分析を見る <span class="jump-link-icon">▼</span>
+            </a>
         </div>
 
         <div class="two-pane-container">
@@ -779,15 +818,18 @@ def generate_html():
             const conflictPoints = document.getElementById('conflictPoints');
             const consensusCount = document.getElementById('consensusCount');
             const conflictCount = document.getElementById('conflictCount');
+            const jumpLink = document.getElementById('jumpLink');
 
             // 軸が選択されていない場合は非表示
             if (!axisFilter || !consensusMap[axisFilter]) {{
                 consensusSection.style.display = 'none';
+                jumpLink.style.display = 'none';
                 return;
             }}
 
             const consensus = consensusMap[axisFilter];
             consensusSection.style.display = 'block';
+            jumpLink.style.display = 'block';
 
             // 合意可能なポイントを表示
             const consensusItems = consensus.consensus_points || [];
